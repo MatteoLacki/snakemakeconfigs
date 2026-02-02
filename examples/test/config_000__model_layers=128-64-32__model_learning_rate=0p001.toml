@@ -1,0 +1,4 @@
+[model]
+layers = [128, 64, 32]
+learning_rate = 0.001
+dropout = 0.3

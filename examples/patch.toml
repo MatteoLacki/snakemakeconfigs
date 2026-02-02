@@ -1,0 +1,13 @@
+[model]
+# Grid search over different layer configurations
+layers_grid = [
+    [128, 64, 32],
+    [256, 128, 64],
+    [512, 256, 128]
+]
+
+# Grid search over learning rates
+learning_rate_grid = [0.001, 0.01, 0.1]
+
+# Single override (not grid search)
+dropout = 0.3
