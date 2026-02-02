@@ -22,7 +22,7 @@ dev = [
 
 
 [project.scripts]
-example_shell_script = "snakemakeconfigs.cli.configpatch:main"
+configpatch = "snakemakeconfigs.cli.configpatch:main"
 
 [project.urls]
 homepage="https://github.com/MatteoLacki/snakemakeconfigs.git"
