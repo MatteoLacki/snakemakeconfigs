@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools >= 64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="snakemakeconfigs"
+version="0.0.1"
+description="Operations on toml configs."
+readme="README.md"
+authors=[
+    {name="MatteoLacki",email="matteo.lacki@gmail.com"},
+]
+requires-python = ">=3.6"
+dependencies = [
+    "tomlkit",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipython",
+]
+
+
+[project.scripts]
+example_shell_script = "snakemakeconfigs.cli.configpatch:main"
+
+[project.urls]
+homepage="https://github.com/MatteoLacki/snakemakeconfigs.git"
+repository="https://github.com/MatteoLacki/snakemakeconfigs.git"
+
+[tool.uv]
+reinstall-package = ["snakemakeconfigs"]
+
+# [tool.pytest.ini_options]
+# testpaths = ["tests"]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# [tool.setuptools]
+# include-package-data = true
+
+# [tool.setuptools.package-data]
+# snakemakeconfigs = ["data/*.csv"]
