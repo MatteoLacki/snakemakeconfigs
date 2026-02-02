@@ -1,5 +1,6 @@
 # toml_patcher.py
 import argparse
+import hashlib
 import tomlkit
 
 from itertools import product
@@ -48,6 +49,76 @@ def set_nested_value(doc, path, value):
     current[parts[-1]] = value
 
 
+def sanitize_for_filename(s):
+    """Make string safe for filename, preserving readability"""
+    s = str(s)
+    replacements = {
+        "[": "",
+        "]": "",
+        " ": "",
+        ",": "-",
+        ".": "p",
+        "/": "_",
+        "\\": "_",
+        ":": "_",
+        "*": "star",
+        "?": "",
+        '"': "",
+        "<": "",
+        ">": "",
+        "|": "_",
+    }
+    for old, new in replacements.items():
+        s = s.replace(old, new)
+    return s
+
+
+def value_to_string(value):
+    """Convert value to explicit string representation"""
+    if isinstance(value, list):
+        return sanitize_for_filename(str(value))
+    elif isinstance(value, float):
+        return str(value).replace(".", "p").replace("-", "neg")
+    elif isinstance(value, bool):
+        return "true" if value else "false"
+    else:
+        return sanitize_for_filename(str(value))
+
+
+def truncate_to_bytes(s, max_bytes):
+    """Truncate string to fit within max_bytes when encoded as UTF-8"""
+    encoded = s.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return s
+    # Truncate and decode, handling partial UTF-8 sequences
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def make_config_name(params_dict, index):
+    """Create fully explicit filename from parameters, with length protection"""
+    parts = []
+    for key, value in params_dict.items():
+        key_str = key.replace(".", "_")
+        val_str = value_to_string(value)
+        parts.append(f"{key_str}={val_str}")
+
+    param_str = "__".join(parts)
+    base_name = f"config_{index:03d}__{param_str}"
+
+    # Linux max filename: 255 bytes
+    # Reserve 5 bytes for ".toml" extension
+    max_length = 250
+
+    if len(base_name.encode("utf-8")) > max_length:
+        # Truncate and add hash of full params for uniqueness
+        param_hash = hashlib.md5(param_str.encode()).hexdigest()[:8]
+        # Reserve space for hash suffix
+        truncated = truncate_to_bytes(base_name, max_length - 9)
+        base_name = f"{truncated}_{param_hash}"
+
+    return f"{base_name}.toml"
+
+
 def generate_configs(base_path, patch_path, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
@@ -70,10 +141,12 @@ def generate_configs(base_path, patch_path, output_dir):
         for i, combination in enumerate(product(*param_values)):
             variant = tomlkit.parse(tomlkit.dumps(result_doc))
 
-            for param_name, value in zip(param_names, combination):
+            params = dict(zip(param_names, combination))
+            for param_name, value in params.items():
                 set_nested_value(variant, param_name, value)
 
-            with open(output_dir / f"config_{i:03d}.toml", "w") as f:
+            filename = make_config_name(params, i)
+            with open(output_dir / filename, "w") as f:
                 f.write(tomlkit.dumps(variant))
 
 
