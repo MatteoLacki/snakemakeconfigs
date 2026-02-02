@@ -8,12 +8,18 @@ A compact tool for applying patches to TOML configuration files with built-in su
 - **Grid search support** - Generate multiple configurations from parameter combinations
 - **Explicit tracking** - Config filenames encode all parameter values for easy identification
 - **Simple syntax** - Patches are just TOML files that mirror the target structure
-- **No dependencies** - Only requires `tomlkit` (pure Python)
+- **Minimal dependencies** - Only `tomlkit` (pure Python)
 
 ## Installation
 
 ```bash
-pip install tomlkit
+python -m pip install git+https://github.com/MatteoLacki/snakemakeconfigs.git
+```
+
+or 
+
+```bash
+python -m pip install git+ssh://git@github.com:MatteoLacki/snakemakeconfigs.git
 ```
 
 Then place `toml_patcher.py` in your project or PATH.
@@ -168,11 +174,10 @@ Works with deeply nested structures - just mirror the structure in your patch fi
 
 This tool follows these principles:
 
-1. **No overengineering** - Minimal, focused codebase
-2. **TOML mirrors TOML** - Patch files use the same structure as target files
-3. **Preserve formatting** - Comments and ordering maintained via `tomlkit`
-4. **Explicit is better** - Filenames show exactly what changed
-5. **Single responsibility** - Does one thing well: apply patches with grid search
+1. **TOML mirrors TOML** - Patch files use the same structure as target files
+2. **Preserve formatting** - Comments and ordering maintained via `tomlkit`
+3. **Explicit is better** - Filenames show exactly what changed
+4. **Single responsibility** - apply patches with grid search
 
 ## Technical Details
 
@@ -190,19 +195,4 @@ This tool follows these principles:
 - No deletion support - patches can only add or modify, not remove keys
 
 ## License
-
-This is a minimal utility script. Use freely in your projects.
-
-## Contributing
-
-This tool is intentionally minimal. Before adding features, consider if they align with the "compact, non-overengineered" philosophy.
-
-## Alternatives
-
-If you need different features:
-- **More control over formatting:** Use `tomlkit` directly
-- **JSON/YAML support:** Use `DeepDiff` with Delta
-- **Complex diffing:** Use traditional `diff`/`patch` tools
-- **Config management:** Consider tools like Hydra or OmegaConf
-
-This tool is best for: simple TOML patches + parameter grid search + explicit tracking.
+MIT, see LICENSE.
