@@ -1,41 +1,25 @@
+# toml_patcher.py
 import argparse
+import difflib
 import hashlib
-import tomlkit
+import re
 
 from itertools import product
 from pathlib import Path
-from tomlkit.items import String
+
+import tomlkit
 
 
-def expand_dotted_tables(doc):
-    """
-    Convert dotted tables like [a.b.c] into nested tables
-    so merge() can recurse properly.
-    """
-    for raw_key in list(doc.keys()):
-        key = str(raw_key)
-        if "." not in key:
-            continue
-
-        value = doc[raw_key]
-        del doc[raw_key]
-
-        parts = key.split(".")
-        current = doc
-        for part in parts[:-1]:
-            if part not in current:
-                current[part] = tomlkit.table()
-            current = current[part]
-
-        current[parts[-1]] = value
+# -----------------------------
+# Patch application
+# -----------------------------
 
 
 def apply_patch(base_doc, patch_doc):
     grid_params = {}
 
     def merge(target, updates, path=""):
-        for raw_key, value in updates.items():
-            key = str(raw_key)
+        for key, value in updates.items():
             current_path = f"{path}.{key}" if path else key
 
             if key.endswith(":grid"):
@@ -47,35 +31,52 @@ def apply_patch(base_doc, patch_doc):
 
             match value:
                 case dict():
-                    if raw_key not in target:
-                        target[raw_key] = tomlkit.table()
-                    merge(target[raw_key], value, current_path)
+                    if key not in target:
+                        target[key] = tomlkit.table()
+                    merge(target[key], value, current_path)
 
                 case [first, *_] if isinstance(first, list):
                     grid_params[current_path] = value
-                    target[raw_key] = value[0]
+                    target[key] = value[0]
 
                 case list():
-                    target[raw_key] = value
+                    target[key] = value
 
                 case _:
-                    target[raw_key] = value
+                    target[key] = value
 
     result = tomlkit.parse(tomlkit.dumps(base_doc))
     merge(result, patch_doc)
     return result, grid_params
 
 
+# -----------------------------
+# Nested helpers
+# -----------------------------
+
+
 def set_nested_value(doc, path, value):
     parts = path.split(".")
     current = doc
-
     for part in parts[:-1]:
         if part not in current:
             current[part] = tomlkit.table()
         current = current[part]
-
     current[parts[-1]] = value
+
+
+def get_nested_value(doc, path):
+    current = doc
+    for part in path.split("."):
+        if part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+# -----------------------------
+# Filename helpers
+# -----------------------------
 
 
 def sanitize_for_filename(s):
@@ -101,15 +102,40 @@ def sanitize_for_filename(s):
     return s
 
 
-def value_to_string(value):
-    if isinstance(value, list):
-        return sanitize_for_filename(str(value))
-    elif isinstance(value, float):
+def diff_strings(str_a, str_b):
+    tokens_a = re.findall(r"\w+", str(str_a))
+    tokens_b = re.findall(r"\w+", str(str_b))
+
+    matcher = difflib.SequenceMatcher(None, tokens_a, tokens_b)
+    new_tokens = []
+
+    for tag, _, _, j1, j2 in matcher.get_opcodes():
+        if tag in ("insert", "replace"):
+            new_tokens.extend(tokens_b[j1:j2])
+
+    return "_".join(new_tokens)
+
+
+def value_to_string(value, base_value=None):
+    if (
+        base_value is not None
+        and isinstance(value, str)
+        and isinstance(base_value, str)
+    ):
+        diff = diff_strings(base_value, value)
+        if diff:
+            return sanitize_for_filename(diff)
+
+    if isinstance(value, float):
         return str(value).replace(".", "p").replace("-", "neg")
-    elif isinstance(value, bool):
+    if isinstance(value, bool):
         return "true" if value else "false"
-    else:
-        return sanitize_for_filename(str(value))
+
+    return sanitize_for_filename(str(value))
+
+
+def shorten_param_name(name):
+    return name.split(".")[-1]
 
 
 def truncate_to_bytes(s, max_bytes):
@@ -119,77 +145,91 @@ def truncate_to_bytes(s, max_bytes):
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def make_config_name(base_stem, params_dict):
+def make_config_name(params, base_stem, base_values, short_names=False):
     parts = []
-    for key, value in params_dict.items():
-        key_str = key.replace(".", "_")
-        val_str = value_to_string(value)
-        parts.append(f"{key_str}={val_str}")
+
+    for key, value in params.items():
+        name = shorten_param_name(key) if short_names else key.replace(".", "_")
+        base_value = base_values.get(key)
+        val_str = value_to_string(value, base_value)
+        parts.append(f"{name}={val_str}")
 
     param_str = "__".join(parts)
     base_name = f"{base_stem}__{param_str}"
 
-    max_length = 250
-    if len(base_name.encode("utf-8")) > max_length:
-        param_hash = hashlib.md5(param_str.encode()).hexdigest()[:8]
-        truncated = truncate_to_bytes(base_name, max_length - 9)
-        base_name = f"{truncated}_{param_hash}"
+    if len(base_name.encode("utf-8")) > 250:
+        h = hashlib.md5(param_str.encode()).hexdigest()[:8]
+        truncated = truncate_to_bytes(base_name, 241)
+        base_name = f"{truncated}_{h}"
 
     return f"{base_name}.toml"
 
 
-def generate_configs(base_path, patch_path, output_dir):
+# -----------------------------
+# Generation
+# -----------------------------
+
+
+def generate_configs(base_path, patch_path, output_dir, short_names=False):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
-    base_stem = Path(base_path).stem
 
-    with open(base_path, "r") as f:
-        base_doc = tomlkit.parse(f.read())
-
-    with open(patch_path, "r") as f:
-        patch_doc = tomlkit.parse(f.read())
-
-    # 🔑 critical fix
-    expand_dotted_tables(patch_doc)
+    base_doc = tomlkit.parse(base_path.read_text())
+    patch_doc = tomlkit.parse(patch_path.read_text())
 
     result_doc, grid_params = apply_patch(base_doc, patch_doc)
+    base_stem = base_path.stem
 
     if not grid_params:
-        with open(output_dir / "config.toml", "w") as f:
-            f.write(tomlkit.dumps(result_doc))
-    else:
-        param_names = list(grid_params.keys())
-        param_values = [grid_params[name] for name in param_names]
+        (output_dir / f"{base_stem}.toml").write_text(tomlkit.dumps(result_doc))
+        return
 
-        for i, combination in enumerate(product(*param_values)):
-            variant = tomlkit.parse(tomlkit.dumps(result_doc))
-            params = dict(zip(param_names, combination))
+    base_scalar_values = {
+        name: get_nested_value(base_doc, name) for name in grid_params
+    }
 
-            for param_name, value in params.items():
-                set_nested_value(variant, param_name, value)
+    param_names = list(grid_params)
+    param_values = [grid_params[n] for n in param_names]
 
-            filename = make_config_name(base_stem, params)
-            with open(output_dir / filename, "w") as f:
-                f.write(tomlkit.dumps(variant))
+    for combo in product(*param_values):
+        variant = tomlkit.parse(tomlkit.dumps(result_doc))
+        params = dict(zip(param_names, combo))
+
+        for k, v in params.items():
+            set_nested_value(variant, k, v)
+
+        filename = make_config_name(
+            params,
+            base_stem,
+            base_scalar_values,
+            short_names,
+        )
+
+        (output_dir / filename).write_text(tomlkit.dumps(variant))
+
+
+# -----------------------------
+# CLI
+# -----------------------------
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Apply TOML patches with grid search support"
+        description="Apply TOML patches with grid-search support"
     )
-    parser.add_argument("base", type=Path, help="Base TOML file")
-    parser.add_argument("patch", type=Path, help="Patch TOML file")
-    parser.add_argument(
-        "-o", "--output", type=Path, required=True, help="Output directory"
-    )
+    parser.add_argument("base", type=Path)
+    parser.add_argument("patch", type=Path)
+    parser.add_argument("-o", "--output", type=Path, required=True)
+    parser.add_argument("--short-names", action="store_true")
+
     args = parser.parse_args()
 
-    if not args.base.exists():
-        parser.error(f"Base file not found: {args.base}")
-    if not args.patch.exists():
-        parser.error(f"Patch file not found: {args.patch}")
-
-    generate_configs(args.base, args.patch, args.output)
+    generate_configs(
+        args.base,
+        args.patch,
+        args.output,
+        args.short_names,
+    )
 
 
 if __name__ == "__main__":
