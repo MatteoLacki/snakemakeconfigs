@@ -1,20 +1,44 @@
-# toml_patcher.py
 import argparse
 import hashlib
 import tomlkit
 
 from itertools import product
 from pathlib import Path
+from tomlkit.items import String
+
+
+def expand_dotted_tables(doc):
+    """
+    Convert dotted tables like [a.b.c] into nested tables
+    so merge() can recurse properly.
+    """
+    for raw_key in list(doc.keys()):
+        key = str(raw_key)
+        if "." not in key:
+            continue
+
+        value = doc[raw_key]
+        del doc[raw_key]
+
+        parts = key.split(".")
+        current = doc
+        for part in parts[:-1]:
+            if part not in current:
+                current[part] = tomlkit.table()
+            current = current[part]
+
+        current[parts[-1]] = value
 
 
 def apply_patch(base_doc, patch_doc):
     grid_params = {}
 
     def merge(target, updates, path=""):
-        for key, value in updates.items():
+        for raw_key, value in updates.items():
+            key = str(raw_key)
             current_path = f"{path}.{key}" if path else key
 
-            if key.endswith("_grid"):
+            if key.endswith(":grid"):
                 actual_key = key[:-5]
                 actual_path = f"{path}.{actual_key}" if path else actual_key
                 grid_params[actual_path] = value
@@ -23,16 +47,19 @@ def apply_patch(base_doc, patch_doc):
 
             match value:
                 case dict():
-                    if key not in target:
-                        target[key] = tomlkit.table()
-                    merge(target[key], value, current_path)
+                    if raw_key not in target:
+                        target[raw_key] = tomlkit.table()
+                    merge(target[raw_key], value, current_path)
+
                 case [first, *_] if isinstance(first, list):
                     grid_params[current_path] = value
-                    target[key] = value[0]
+                    target[raw_key] = value[0]
+
                 case list():
-                    target[key] = value
+                    target[raw_key] = value
+
                 case _:
-                    target[key] = value
+                    target[raw_key] = value
 
     result = tomlkit.parse(tomlkit.dumps(base_doc))
     merge(result, patch_doc)
@@ -42,15 +69,16 @@ def apply_patch(base_doc, patch_doc):
 def set_nested_value(doc, path, value):
     parts = path.split(".")
     current = doc
+
     for part in parts[:-1]:
         if part not in current:
             current[part] = tomlkit.table()
         current = current[part]
+
     current[parts[-1]] = value
 
 
 def sanitize_for_filename(s):
-    """Make string safe for filename, preserving readability"""
     s = str(s)
     replacements = {
         "[": "",
@@ -74,7 +102,6 @@ def sanitize_for_filename(s):
 
 
 def value_to_string(value):
-    """Convert value to explicit string representation"""
     if isinstance(value, list):
         return sanitize_for_filename(str(value))
     elif isinstance(value, float):
@@ -86,16 +113,13 @@ def value_to_string(value):
 
 
 def truncate_to_bytes(s, max_bytes):
-    """Truncate string to fit within max_bytes when encoded as UTF-8"""
     encoded = s.encode("utf-8")
     if len(encoded) <= max_bytes:
         return s
-    # Truncate and decode, handling partial UTF-8 sequences
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
 def make_config_name(params_dict, index):
-    """Create fully explicit filename from parameters, with length protection"""
     parts = []
     for key, value in params_dict.items():
         key_str = key.replace(".", "_")
@@ -105,14 +129,9 @@ def make_config_name(params_dict, index):
     param_str = "__".join(parts)
     base_name = f"config_{index:03d}__{param_str}"
 
-    # Linux max filename: 255 bytes
-    # Reserve 5 bytes for ".toml" extension
     max_length = 250
-
     if len(base_name.encode("utf-8")) > max_length:
-        # Truncate and add hash of full params for uniqueness
         param_hash = hashlib.md5(param_str.encode()).hexdigest()[:8]
-        # Reserve space for hash suffix
         truncated = truncate_to_bytes(base_name, max_length - 9)
         base_name = f"{truncated}_{param_hash}"
 
@@ -129,6 +148,9 @@ def generate_configs(base_path, patch_path, output_dir):
     with open(patch_path, "r") as f:
         patch_doc = tomlkit.parse(f.read())
 
+    # 🔑 critical fix
+    expand_dotted_tables(patch_doc)
+
     result_doc, grid_params = apply_patch(base_doc, patch_doc)
 
     if not grid_params:
@@ -140,8 +162,8 @@ def generate_configs(base_path, patch_path, output_dir):
 
         for i, combination in enumerate(product(*param_values)):
             variant = tomlkit.parse(tomlkit.dumps(result_doc))
-
             params = dict(zip(param_names, combination))
+
             for param_name, value in params.items():
                 set_nested_value(variant, param_name, value)
 
