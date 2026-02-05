@@ -119,7 +119,7 @@ def truncate_to_bytes(s, max_bytes):
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def make_config_name(params_dict, index):
+def make_config_name(base_stem, params_dict):
     parts = []
     for key, value in params_dict.items():
         key_str = key.replace(".", "_")
@@ -127,7 +127,7 @@ def make_config_name(params_dict, index):
         parts.append(f"{key_str}={val_str}")
 
     param_str = "__".join(parts)
-    base_name = f"config_{index:03d}__{param_str}"
+    base_name = f"{base_stem}__{param_str}"
 
     max_length = 250
     if len(base_name.encode("utf-8")) > max_length:
@@ -141,6 +141,7 @@ def make_config_name(params_dict, index):
 def generate_configs(base_path, patch_path, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
+    base_stem = Path(base_path).stem
 
     with open(base_path, "r") as f:
         base_doc = tomlkit.parse(f.read())
@@ -167,7 +168,7 @@ def generate_configs(base_path, patch_path, output_dir):
             for param_name, value in params.items():
                 set_nested_value(variant, param_name, value)
 
-            filename = make_config_name(params, i)
+            filename = make_config_name(base_stem, params)
             with open(output_dir / filename, "w") as f:
                 f.write(tomlkit.dumps(variant))
 
