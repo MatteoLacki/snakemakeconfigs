@@ -35,13 +35,6 @@ def apply_patch(base_doc, patch_doc):
                         target[key] = tomlkit.table()
                     merge(target[key], value, current_path)
 
-                case [first, *_] if isinstance(first, list):
-                    grid_params[current_path] = value
-                    target[key] = value[0]
-
-                case list():
-                    target[key] = value
-
                 case _:
                     target[key] = value
 
