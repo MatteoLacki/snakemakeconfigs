@@ -176,7 +176,7 @@ def make_config_name(params, base_stem, base_values, short_names=False):
         name = shorten_param_name(key) if short_names else key.replace(".", "_")
         base_value = base_values.get(key)
         val_str = value_to_string(value, base_value)
-        parts.append(f"{name}={val_str}")
+        parts.append(f"{name}+{val_str}")
 
     param_str = "__".join(parts)
     base_name = f"{base_stem}__{param_str}"
