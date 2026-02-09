@@ -239,7 +239,7 @@ def expand_configs(base_doc, grid_params, output_dir, base_stem, short_names=Fal
 
 
 def _print_filenames(names):
-    print("{" + ",".join(names) + "}")
+    print("{" + ",".join((n.replace(".toml", "") for n in names)) + "}")
 
 
 def configpatch_cli():
