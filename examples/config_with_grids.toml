@@ -1,0 +1,8 @@
+[model]
+layers__grid = [128, 64, 32]
+learning_rate = 0.01
+
+[test]
+some_values__grid = [1.2, 3.4, 32.1]
+test = 101
+testlists__grid = [ [1,2,23], [232,4654,64654] ]

@@ -15,28 +15,34 @@ import tomlkit
 # -----------------------------
 
 
-def apply_patch(base_doc, patch_doc):
+def apply_patch(base_doc, patch_doc, grid_suffixes):
     grid_params = {}
 
     def merge(target, updates, path=""):
         for key, value in updates.items():
-            current_path = f"{path}.{key}" if path else key
+            # --- grid handling ---
+            for suffix in grid_suffixes:
+                if key.endswith(suffix):
+                    actual_key = key[: -len(suffix)]
+                    actual_path = f"{path}.{actual_key}" if path else actual_key
 
-            if key.endswith(":grid"):
-                actual_key = key[:-5]
-                actual_path = f"{path}.{actual_key}" if path else actual_key
-                grid_params[actual_path] = value
-                target[actual_key] = value[0]
-                continue
+                    if not isinstance(value, list):
+                        raise TypeError(f"{actual_path}{suffix} must be a list")
 
-            match value:
-                case dict():
-                    if key not in target:
-                        target[key] = tomlkit.table()
-                    merge(target[key], value, current_path)
+                    grid_params[actual_path] = value
+                    target[actual_key] = value[0]
+                    break
+            else:
+                # --- normal merge ---
+                match value:
+                    case dict():
+                        if key not in target:
+                            target[key] = tomlkit.table()
+                        next_path = f"{path}.{key}" if path else key
+                        merge(target[key], value, next_path)
 
-                case _:
-                    target[key] = value
+                    case _:
+                        target[key] = value
 
     result = tomlkit.parse(tomlkit.dumps(base_doc))
     merge(result, patch_doc)
@@ -163,14 +169,25 @@ def make_config_name(params, base_stem, base_values, short_names=False):
 # -----------------------------
 
 
-def generate_configs(base_path, patch_path, output_dir, short_names=False):
+def generate_configs(
+    base_path,
+    patch_path,
+    output_dir,
+    short_names=False,
+    grid_suffixes=("__grid",),
+):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
 
     base_doc = tomlkit.parse(base_path.read_text())
     patch_doc = tomlkit.parse(patch_path.read_text())
 
-    result_doc, grid_params = apply_patch(base_doc, patch_doc)
+    result_doc, grid_params = apply_patch(
+        base_doc,
+        patch_doc,
+        grid_suffixes,
+    )
+
     base_stem = base_path.stem
 
     if not grid_params:
@@ -215,13 +232,21 @@ def main():
     parser.add_argument("-o", "--output", type=Path, required=True)
     parser.add_argument("--short-names", action="store_true")
 
+    parser.add_argument(
+        "--grid-tag",
+        action="append",
+        default=["__grid"],
+        help=("Suffix marking grid parameters. " "Can be repeated. Default: __grid"),
+    )
+
     args = parser.parse_args()
 
     generate_configs(
         args.base,
         args.patch,
         args.output,
-        args.short_names,
+        short_names=args.short_names,
+        grid_suffixes=tuple(args.grid_tag),
     )
 
 
