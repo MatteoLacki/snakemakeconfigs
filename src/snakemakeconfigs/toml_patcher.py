@@ -169,14 +169,14 @@ def truncate_to_bytes(s, max_bytes):
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def make_config_name(params, base_stem, base_values, short_names=False):
+def make_config_name(params, base_stem, base_values, short_names=False, equal_sign="="):
     parts = []
 
     for key, value in params.items():
         name = shorten_param_name(key) if short_names else key.replace(".", "_")
         base_value = base_values.get(key)
         val_str = value_to_string(value, base_value)
-        parts.append(f"{name}+{val_str}")
+        parts.append(f"{name}{equal_sign}{val_str}")
 
     param_str = "__".join(parts)
     base_name = f"{base_stem}__{param_str}"
@@ -194,7 +194,7 @@ def make_config_name(params, base_stem, base_values, short_names=False):
 # -----------------------------
 
 
-def expand_configs(base_doc, grid_params, output_dir, base_stem, short_names=False):
+def expand_configs(base_doc, grid_params, output_dir, base_stem, **kwargs):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -220,12 +220,7 @@ def expand_configs(base_doc, grid_params, output_dir, base_stem, short_names=Fal
         for k, v in params.items():
             set_nested_value(variant, k, v)
 
-        filename = make_config_name(
-            params,
-            base_stem,
-            base_scalar_values,
-            short_names,
-        )
+        filename = make_config_name(params, base_stem, base_scalar_values, **kwargs)
 
         (output_dir / filename).write_text(tomlkit.dumps(variant))
         written_files.append(filename)
@@ -244,19 +239,24 @@ def _print_filenames(names):
 
 def configpatch_cli():
     parser = argparse.ArgumentParser(
-        description="Apply TOML patches with grid-search support"
+        description="Apply TOML patches with grid-search support",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("base", type=Path)
     parser.add_argument("patch", type=Path)
     parser.add_argument("-o", "--output", type=Path, required=True)
-    parser.add_argument("--short-names", action="store_true")
+    parser.add_argument("--long-names", action="store_true")
     parser.add_argument(
         "--grid-tag",
         action="append",
         default=["__grid"],
-        help="Grid suffix (repeatable). Default: __grid",
+        help="Grid suffix/suffixes (e.g. `--grid-tag __grid --grid-tag __span`).",
     )
-
+    parser.add_argument(
+        "--equal-sign",
+        default="+",
+        help="Equal sign used in names of configs.",
+    )
     args = parser.parse_args()
 
     base_doc = tomlkit.parse(args.base.read_text())
@@ -269,7 +269,8 @@ def configpatch_cli():
         grid_params,
         args.output,
         args.base.stem,
-        args.short_names,
+        short_names=not args.long_names,
+        equal_sign=args.equal_sign,
     )
 
     _print_filenames(names)
@@ -277,18 +278,23 @@ def configpatch_cli():
 
 def expandgrids_cli():
     parser = argparse.ArgumentParser(
-        description="Expand grid parameters in a single TOML config"
+        description="Expand grid parameters in a single TOML config",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("base", type=Path)
     parser.add_argument("-o", "--output", type=Path, required=True)
-    parser.add_argument("--short-names", action="store_true")
+    parser.add_argument("--long-names", action="store_true")
     parser.add_argument(
         "--grid-tag",
         action="append",
         default=["__grid"],
-        help="Grid suffix (repeatable). Default: __grid",
+        help="Grid suffix/suffixes (e.g. `--grid-tag __grid --grid-tag __span`).",
     )
-
+    parser.add_argument(
+        "--equal-sign",
+        default="+",
+        help="Equal sign used in names of configs.",
+    )
     args = parser.parse_args()
 
     base_doc = tomlkit.parse(args.base.read_text())
@@ -300,7 +306,8 @@ def expandgrids_cli():
         grid_params,
         args.output,
         args.base.stem,
-        args.short_names,
+        short_names=not args.long_names,
+        equal_sign=args.equal_sign,
     )
 
     _print_filenames(names)
