@@ -32,8 +32,8 @@ repository="https://github.com/MatteoLacki/snakemakeconfigs.git"
 [tool.uv]
 reinstall-package = ["snakemakeconfigs"]
 
-# [tool.pytest.ini_options]
-# testpaths = ["tests"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 
 [tool.setuptools.packages.find]

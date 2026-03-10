@@ -8,6 +8,7 @@ from itertools import product
 from pathlib import Path
 
 import tomlkit
+from tomlkit.items import AoT
 
 
 # -----------------------------
@@ -32,7 +33,14 @@ def apply_patch(base_doc, patch_doc, grid_suffixes):
                     target[actual_key] = value[0]
                     break
             else:
-                if isinstance(value, dict):
+                if isinstance(value, AoT):
+                    actual_path = f"{path}.{key}" if path else key
+                    all_variants = []
+                    for elem in value:
+                        all_variants.extend(_expand_aot_element(elem, grid_suffixes))
+                    grid_params[actual_path] = all_variants
+                    target[key] = all_variants[0]
+                elif isinstance(value, dict):
                     if key not in target:
                         target[key] = tomlkit.table()
                     next_path = f"{path}.{key}" if path else key
@@ -43,6 +51,45 @@ def apply_patch(base_doc, patch_doc, grid_suffixes):
     result = tomlkit.parse(tomlkit.dumps(base_doc))
     merge(result, patch_doc)
     return result, grid_params
+
+
+def _expand_aot_element(elem_table, grid_suffixes):
+    """Expand __grid params within a single AoT element.
+    Returns a list of tomlkit Table objects (one per combo)."""
+    local_grids = {}
+
+    def walk_elem(tbl, path=""):
+        for key in list(tbl.keys()):
+            value = tbl[key]
+            for suffix in grid_suffixes:
+                if key.endswith(suffix):
+                    actual_key = key[: -len(suffix)]
+                    actual_path = f"{path}.{actual_key}" if path else actual_key
+                    if not isinstance(value, list):
+                        raise TypeError(f"{actual_path}{suffix} must be a list")
+                    local_grids[actual_path] = value
+                    tbl[actual_key] = value[0]
+                    del tbl[key]
+                    break
+            else:
+                if isinstance(value, dict):
+                    walk_elem(value, f"{path}.{key}" if path else key)
+
+    base = tomlkit.parse(tomlkit.dumps(elem_table))
+    walk_elem(base)
+
+    if not local_grids:
+        return [base]
+
+    names = list(local_grids)
+    values = [local_grids[n] for n in names]
+    results = []
+    for combo in product(*values):
+        variant = tomlkit.parse(tomlkit.dumps(base))
+        for k, v in zip(names, combo):
+            set_nested_value(variant, k, v)
+        results.append(variant)
+    return results
 
 
 def extract_grids_from_doc(doc, grid_suffixes):
@@ -65,7 +112,14 @@ def extract_grids_from_doc(doc, grid_suffixes):
                     del table[key]
                     break
             else:
-                if isinstance(value, dict):
+                if isinstance(value, AoT):
+                    actual_path = f"{path}.{key}" if path else key
+                    all_variants = []
+                    for elem in value:
+                        all_variants.extend(_expand_aot_element(elem, grid_suffixes))
+                    grid_params[actual_path] = all_variants
+                    table[key] = all_variants[0]
+                elif isinstance(value, dict):
                     next_path = f"{path}.{key}" if path else key
                     walk(value, next_path)
 
@@ -169,13 +223,16 @@ def truncate_to_bytes(s, max_bytes):
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def make_config_name(params, base_stem, base_values, short_names=False, equal_sign="="):
+def make_config_name(params, base_stem, base_values, short_names=False, equal_sign="=", grid_indices=None):
     parts = []
 
     for key, value in params.items():
         name = shorten_param_name(key) if short_names else key.replace(".", "_")
-        base_value = base_values.get(key)
-        val_str = value_to_string(value, base_value)
+        if grid_indices and key in grid_indices:
+            val_str = str(grid_indices[key][id(value)])
+        else:
+            base_value = base_values.get(key)
+            val_str = value_to_string(value, base_value)
         parts.append(f"{name}{equal_sign}{val_str}")
 
     param_str = "__".join(parts)
@@ -210,6 +267,12 @@ def expand_configs(base_doc, grid_params, output_dir, base_stem, **kwargs):
         name: get_nested_value(base_doc, name) for name in grid_params
     }
 
+    grid_indices = {
+        name: {id(v): i for i, v in enumerate(vals)}
+        for name, vals in grid_params.items()
+        if vals and isinstance(vals[0], dict)
+    }
+
     param_names = list(grid_params)
     param_values = [grid_params[n] for n in param_names]
 
@@ -220,7 +283,9 @@ def expand_configs(base_doc, grid_params, output_dir, base_stem, **kwargs):
         for k, v in params.items():
             set_nested_value(variant, k, v)
 
-        filename = make_config_name(params, base_stem, base_scalar_values, **kwargs)
+        filename = make_config_name(
+            params, base_stem, base_scalar_values, grid_indices=grid_indices, **kwargs
+        )
 
         (output_dir / filename).write_text(tomlkit.dumps(variant))
         written_files.append(filename)

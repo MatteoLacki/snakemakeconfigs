@@ -1,0 +1,8 @@
+[model]
+learning_rate = 0.01
+layers = 64
+
+[test]
+test = 101
+some_values = 3.4
+testlists = [1,2,23]
