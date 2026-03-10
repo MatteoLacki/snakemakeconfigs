@@ -1,0 +1,11 @@
+[[A__grid]]
+b = 10
+c__grid = [1,2,3]
+
+[[A__grid]]
+d = 20
+e__grid=[1,2,3]
+
+[[A__grid]]
+[A__grid.test]
+b__grid = [1,2]

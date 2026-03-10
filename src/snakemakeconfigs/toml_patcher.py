@@ -7,6 +7,8 @@ import re
 from itertools import product
 from pathlib import Path
 
+import copy
+
 import tomlkit
 from tomlkit.items import AoT
 
@@ -52,6 +54,19 @@ def apply_patch(base_doc, patch_doc, grid_suffixes):
     return result, grid_params
 
 
+def _aot_elem_to_plain_table(elem):
+    """Recursively convert an AoT element Table to a plain tomlkit table.
+
+    deepcopy alone preserves is_aot_element=True, which causes the table to
+    serialize as [[key]] instead of [key] when placed back in a document.
+    This function builds a fresh tomlkit.table() free of that flag.
+    """
+    t = tomlkit.table()
+    for k, v in elem.items():
+        t[k] = _aot_elem_to_plain_table(v) if isinstance(v, dict) else copy.deepcopy(v)
+    return t
+
+
 def _expand_aot_element(elem_table, grid_suffixes):
     """Expand __grid params within a single AoT element.
     Returns a list of tomlkit Table objects (one per combo)."""
@@ -74,7 +89,7 @@ def _expand_aot_element(elem_table, grid_suffixes):
                 if isinstance(value, dict):
                     walk_elem(value, f"{path}.{key}" if path else key)
 
-    base = tomlkit.parse(tomlkit.dumps(elem_table))
+    base = _aot_elem_to_plain_table(elem_table)
     walk_elem(base)
 
     if not local_grids:
@@ -84,7 +99,7 @@ def _expand_aot_element(elem_table, grid_suffixes):
     values = [local_grids[n] for n in names]
     results = []
     for combo in product(*values):
-        variant = tomlkit.parse(tomlkit.dumps(base))
+        variant = _aot_elem_to_plain_table(base)
         for k, v in zip(names, combo):
             set_nested_value(variant, k, v)
         results.append(variant)

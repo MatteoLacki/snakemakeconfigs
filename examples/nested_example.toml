@@ -1,0 +1,96 @@
+[[precursor_candidate_selection__grid]]
+minimal_number_of_events_in_cluster = 5
+method = "correlation"
+    [precursor_candidate_selection__grid.method_settings]
+    mode = "urt_scan"
+    dtype = "int8"
+    [precursor_candidate_selection__grid.method_settings.scoop]
+    bigscoop   = {sigmas_used = 2}
+    smallscoop = {sigmas_used = 1}
+    [precursor_candidate_selection__grid.precursors_box_overlap_graph.scale_multipliers]
+    tof  = 1.0
+    urt  = 1.0
+    scan = 1.0
+
+
+[[precursor_candidate_selection__grid]]
+minimal_number_of_events_in_cluster = 5
+method = "approximate_quantile_regression_scaled_boxes"
+    [precursor_candidate_selection__grid.method_settings]
+    g_norm_method = "continuous"
+    tau = 0.01
+    [precursor_candidate_selection__grid.method_settings.scale_multipliers]
+    tof  = 2.0
+    urt  = 2.0
+    scan = 2.0
+    [precursor_candidate_selection__grid.precursors_box_overlap_graph.scale_multipliers]
+    tof  = 1.0
+    urt  = 1.0
+    scan = 1.0
+
+
+[[precursor_candidate_selection__grid]]
+minimal_number_of_events_in_cluster = 5
+method = "dotproduct_scaled_boxes"
+    [precursor_candidate_selection__grid.method_settings]
+    # g_norm_method = "discrete" # discrete
+    g_norm_method = "continuous" # discrete
+    [precursor_candidate_selection__grid.method_settings.scale_multipliers]
+    tof = 2.0
+    urt = 2.0
+    scan = 2.0
+    [precursor_candidate_selection__grid.precursors_box_overlap_graph.scale_multipliers]
+    tof = 1.0
+    urt = 1.0
+    scan = 1.0
+
+
+[[precursor_candidate_selection__grid]]
+minimal_number_of_events_in_cluster = 5
+method = "quantile_regression_scaled_boxes"
+    [precursor_candidate_selection__grid.method_settings]
+    g_norm_method = "continuous"
+    tau = 0.1
+    [precursor_candidate_selection__grid.method_settings.scale_multipliers]
+    tof  = 2.0
+    urt  = 2.0
+    scan = 2.0
+    [precursor_candidate_selection__grid.precursors_box_overlap_graph.scale_multipliers]
+    tof  = 1.0
+    urt  = 1.0
+    scan = 1.0
+
+
+[[precursor_candidate_selection__grid]]
+minimal_number_of_events_in_cluster = 5
+method = "smoothed_intensity_scaled_boxes"
+    [precursor_candidate_selection__grid.method_settings]
+    normalize = true
+    kernel = [
+        [[1,1,1],[1,1,1],[1,1,1]],
+        [[1,1,1],[1,1,1],[1,1,1]],
+        [[1,1,1],[1,1,1],[1,1,1]],
+    ]
+    [precursor_candidate_selection__grid.method_settings.scale_multipliers]
+    tof  = 2.0
+    urt  = 2.0
+    scan = 2.0
+    [precursor_candidate_selection__grid.precursors_box_overlap_graph.scale_multipliers]
+    tof  = 1.0
+    urt  = 1.0
+    scan = 1.0
+
+
+[[precursor_candidate_selection__grid]]
+minimal_number_of_events_in_cluster = 5
+method = "weighted_regression_scaled_boxes"
+    [precursor_candidate_selection__grid.method_settings]
+    g_norm_method = "continuous"
+    [precursor_candidate_selection__grid.method_settings.scale_multipliers]
+    tof  = 2.0
+    urt  = 2.0
+    scan = 2.0
+    [precursor_candidate_selection__grid.precursors_box_overlap_graph.scale_multipliers]
+    tof  = 1.0
+    urt  = 1.0
+    scan = 1.0
