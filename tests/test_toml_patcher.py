@@ -154,8 +154,8 @@ def test_expand_configs_aot_filenames_encode_index(tmp_path):
 def test_apply_patch_aot(tmp_path):
     base = tomlkit.parse("[model]\nlayers = 128\nlearning_rate = 0.01\n")
     patch_text = (
-        "[[test]]\nsome_values__grid = [1.2, 3.4]\ntest = 1\n\n"
-        "[[test]]\nsome_values__grid = [10.0]\ntest = 2\n"
+        "[[test__grid]]\nsome_values__grid = [1.2, 3.4]\ntest = 1\n\n"
+        "[[test__grid]]\nsome_values__grid = [10.0]\ntest = 2\n"
     )
     patch = tomlkit.parse(patch_text)
     result, grids = apply_patch(base, patch, GRID_SUFFIXES)
@@ -170,14 +170,24 @@ def test_apply_patch_aot_expand_files(tmp_path):
     # patch adds both an AoT grid dimension and a scalar grid dimension
     patch_text = (
         "layers__grid = [64, 128]\n\n"
-        "[[test]]\nsome_values__grid = [1.2, 3.4]\ntest = 1\n\n"
-        "[[test]]\nsome_values__grid = [10.0]\ntest = 2\n"
+        "[[test__grid]]\nsome_values__grid = [1.2, 3.4]\ntest = 1\n\n"
+        "[[test__grid]]\nsome_values__grid = [10.0]\ntest = 2\n"
     )
     patch = tomlkit.parse(patch_text)
     result, grids = apply_patch(base, patch, GRID_SUFFIXES)
     # 2 layers × 3 test variants = 6 files
     files = expand_configs(result, grids, tmp_path, "config", short_names=True)
     assert len(files) == 6
+
+
+def test_plain_aot_without_suffix_is_not_a_grid():
+    """[[section]] without __grid suffix must NOT become a grid dimension."""
+    doc = tomlkit.parse(
+        "[model]\nlayers = 128\n\n[[runs]]\nid = 1\n\n[[runs]]\nid = 2\n"
+    )
+    _, grids = extract_grids_from_doc(doc, GRID_SUFFIXES)
+    assert "runs" not in grids
+    assert grids == {}
 
 
 # ---------------------------------------------------------------------------

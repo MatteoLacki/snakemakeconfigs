@@ -26,21 +26,20 @@ def apply_patch(base_doc, patch_doc, grid_suffixes):
                     actual_key = key[: -len(suffix)]
                     actual_path = f"{path}.{actual_key}" if path else actual_key
 
-                    if not isinstance(value, list):
-                        raise TypeError(f"{actual_path}{suffix} must be a list")
-
-                    grid_params[actual_path] = value
-                    target[actual_key] = value[0]
+                    if isinstance(value, AoT):
+                        all_variants = []
+                        for elem in value:
+                            all_variants.extend(_expand_aot_element(elem, grid_suffixes))
+                        grid_params[actual_path] = all_variants
+                        target[actual_key] = all_variants[0]
+                    elif isinstance(value, list):
+                        grid_params[actual_path] = value
+                        target[actual_key] = value[0]
+                    else:
+                        raise TypeError(f"{actual_path}{suffix} must be a list or array of tables")
                     break
             else:
-                if isinstance(value, AoT):
-                    actual_path = f"{path}.{key}" if path else key
-                    all_variants = []
-                    for elem in value:
-                        all_variants.extend(_expand_aot_element(elem, grid_suffixes))
-                    grid_params[actual_path] = all_variants
-                    target[key] = all_variants[0]
-                elif isinstance(value, dict):
+                if isinstance(value, dict):
                     if key not in target:
                         target[key] = tomlkit.table()
                     next_path = f"{path}.{key}" if path else key
@@ -104,24 +103,25 @@ def extract_grids_from_doc(doc, grid_suffixes):
                     actual_key = key[: -len(suffix)]
                     actual_path = f"{path}.{actual_key}" if path else actual_key
 
-                    if not isinstance(value, list):
-                        raise TypeError(f"{actual_path}{suffix} must be a list")
-
-                    grid_params[actual_path] = value
-                    table[actual_key] = value[0]
-                    del table[key]
+                    if isinstance(value, AoT):
+                        all_variants = []
+                        for elem in value:
+                            all_variants.extend(_expand_aot_element(elem, grid_suffixes))
+                        grid_params[actual_path] = all_variants
+                        table[actual_key] = all_variants[0]
+                        del table[key]
+                    elif isinstance(value, list):
+                        grid_params[actual_path] = value
+                        table[actual_key] = value[0]
+                        del table[key]
+                    else:
+                        raise TypeError(f"{actual_path}{suffix} must be a list or array of tables")
                     break
             else:
-                if isinstance(value, AoT):
-                    actual_path = f"{path}.{key}" if path else key
-                    all_variants = []
-                    for elem in value:
-                        all_variants.extend(_expand_aot_element(elem, grid_suffixes))
-                    grid_params[actual_path] = all_variants
-                    table[key] = all_variants[0]
-                elif isinstance(value, dict):
+                if isinstance(value, dict):
                     next_path = f"{path}.{key}" if path else key
                     walk(value, next_path)
+                # plain AoT without suffix: not a grid dimension, leave as-is
 
     result = tomlkit.parse(tomlkit.dumps(doc))
     walk(result)
