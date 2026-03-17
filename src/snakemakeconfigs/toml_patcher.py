@@ -2,6 +2,7 @@
 import argparse
 import difflib
 import hashlib
+import os
 import re
 
 from itertools import product
@@ -205,6 +206,26 @@ def sanitize_for_filename(s):
     return s
 
 
+def _strip_common_affixes(labels):
+    """Strip character-level common prefix and suffix from a list of label strings.
+
+    Falls back gracefully: if stripping would fully consume any label, tries
+    prefix-only, then suffix-only, then returns labels unchanged.
+    Dangling leading/trailing underscores are removed from the result.
+    """
+    prefix = os.path.commonprefix(labels)
+    suffix = os.path.commonprefix([s[::-1] for s in labels])[::-1]
+    p, s = len(prefix), len(suffix)
+    if p + s == 0:
+        return labels
+    if any(p + s >= len(lab) for lab in labels):
+        s = 0  # drop suffix, try prefix only
+        if any(p >= len(lab) for lab in labels):
+            return labels
+    stripped = [lab[p : len(lab) - s if s else None].strip("_") or lab for lab in labels]
+    return stripped
+
+
 def _find_auto_label(vals):
     """Return {id(v): label_str} if all dict variants share a top-level string
     key with distinct values; otherwise None."""
@@ -308,6 +329,12 @@ def _build_grid_indices(grid_params):
         else:
             auto = _find_auto_label(vals)
             result[name] = auto if auto is not None else {id(v): str(i) for i, v in enumerate(vals)}
+        # Strip common character-level prefix/suffix from human-readable labels
+        ids = list(result[name])
+        labels = [result[name][k] for k in ids]
+        if not all(s.isdigit() for s in labels):
+            stripped = _strip_common_affixes(labels)
+            result[name] = dict(zip(ids, stripped))
     return result
 
 

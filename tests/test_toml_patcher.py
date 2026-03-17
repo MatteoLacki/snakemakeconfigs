@@ -251,6 +251,7 @@ def test_explicit_label_overrides_auto(tmp_path):
     )
     result, grids = extract_grids_from_doc(doc, GRID_SUFFIXES)
     files = expand_configs(result, grids, tmp_path, "cfg", short_names=True, equal_sign="+")
-    assert any("mylabel" in f for f in files)
-    assert any("otherlabel" in f for f in files)
+    # common suffix "label" is stripped → "my" and "other"
+    assert any("my" in f for f in files)
+    assert any("other" in f for f in files)
     assert not any("+a" in f for f in files)  # __label took priority, not raw method value
