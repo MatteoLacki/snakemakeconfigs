@@ -329,12 +329,6 @@ def _build_grid_indices(grid_params):
         else:
             auto = _find_auto_label(vals)
             result[name] = auto if auto is not None else {id(v): str(i) for i, v in enumerate(vals)}
-        # Strip common character-level prefix/suffix from human-readable labels
-        ids = list(result[name])
-        labels = [result[name][k] for k in ids]
-        if not all(s.isdigit() for s in labels):
-            stripped = _strip_common_affixes(labels)
-            result[name] = dict(zip(ids, stripped))
     return result
 
 
