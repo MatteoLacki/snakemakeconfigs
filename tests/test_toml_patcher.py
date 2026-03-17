@@ -207,3 +207,50 @@ def test_make_config_name_grid_indices():
         {"test": t1}, "base", {}, short_names=True, equal_sign="+", grid_indices=grid_indices
     )
     assert name == "base__test+1.toml"
+
+
+# ---------------------------------------------------------------------------
+# Auto-label and explicit __label
+# ---------------------------------------------------------------------------
+
+
+def test_auto_label_from_method_field(tmp_path):
+    doc = tomlkit.parse(
+        "[[algo__grid]]\nmethod = 'corr'\nx = 1\n\n"
+        "[[algo__grid]]\nmethod = 'dotprod'\nx = 2\n"
+    )
+    result, grids = extract_grids_from_doc(doc, GRID_SUFFIXES)
+    files = expand_configs(result, grids, tmp_path, "cfg", short_names=True, equal_sign="+")
+    names = set(files)
+    # value-only: key name omitted when unambiguous
+    assert any("corr" in f for f in names)
+    assert any("dotprod" in f for f in names)
+    assert not any("algo+" in f for f in names)
+
+
+def test_explicit_label_in_aot(tmp_path):
+    doc = tomlkit.parse(
+        "[[algo__grid]]\n__label = 'fast'\nmethod = 'a'\n\n"
+        "[[algo__grid]]\n__label = 'slow'\nmethod = 'b'\n"
+    )
+    result, grids = extract_grids_from_doc(doc, GRID_SUFFIXES)
+    files = expand_configs(result, grids, tmp_path, "cfg", short_names=True, equal_sign="+")
+    # value-only: key name omitted when unambiguous
+    assert any("fast" in f for f in files)
+    assert any("slow" in f for f in files)
+    assert not any("algo+" in f for f in files)
+    # __label must not appear in output TOML
+    for f in tmp_path.glob("*.toml"):
+        assert "__label" not in f.read_text()
+
+
+def test_explicit_label_overrides_auto(tmp_path):
+    doc = tomlkit.parse(
+        "[[algo__grid]]\n__label = 'mylabel'\nmethod = 'a'\n\n"
+        "[[algo__grid]]\n__label = 'otherlabel'\nmethod = 'b'\n"
+    )
+    result, grids = extract_grids_from_doc(doc, GRID_SUFFIXES)
+    files = expand_configs(result, grids, tmp_path, "cfg", short_names=True, equal_sign="+")
+    assert any("mylabel" in f for f in files)
+    assert any("otherlabel" in f for f in files)
+    assert not any("+a" in f for f in files)  # __label took priority, not raw method value

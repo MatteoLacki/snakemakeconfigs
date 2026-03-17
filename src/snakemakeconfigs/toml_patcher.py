@@ -90,19 +90,29 @@ def _expand_aot_element(elem_table, grid_suffixes):
                     walk_elem(value, f"{path}.{key}" if path else key)
 
     base = _aot_elem_to_plain_table(elem_table)
+
+    explicit_label = None
+    if "__label" in base:
+        explicit_label = str(base["__label"])
+        del base["__label"]
+
     walk_elem(base)
 
     if not local_grids:
-        return [base]
+        results = [base]
+    else:
+        names = list(local_grids)
+        values = [local_grids[n] for n in names]
+        results = []
+        for combo in product(*values):
+            variant = _aot_elem_to_plain_table(base)
+            for k, v in zip(names, combo):
+                set_nested_value(variant, k, v)
+            results.append(variant)
 
-    names = list(local_grids)
-    values = [local_grids[n] for n in names]
-    results = []
-    for combo in product(*values):
-        variant = _aot_elem_to_plain_table(base)
-        for k, v in zip(names, combo):
-            set_nested_value(variant, k, v)
-        results.append(variant)
+    if explicit_label is not None:
+        for variant in results:
+            variant["__label"] = explicit_label
     return results
 
 
@@ -195,6 +205,19 @@ def sanitize_for_filename(s):
     return s
 
 
+def _find_auto_label(vals):
+    """Return {id(v): label_str} if all dict variants share a top-level string
+    key with distinct values; otherwise None."""
+    common_keys = set(vals[0].keys())
+    for v in vals[1:]:
+        common_keys &= set(v.keys())
+    for key in sorted(common_keys):  # deterministic order
+        values = [v[key] for v in vals]
+        if all(isinstance(val, str) for val in values) and len(set(values)) == len(vals):
+            return {id(v): sanitize_for_filename(v[key]) for v in vals}
+    return None
+
+
 def diff_strings(str_a, str_b):
     tokens_a = re.findall(r"\w+", str(str_a))
     tokens_b = re.findall(r"\w+", str(str_b))
@@ -238,7 +261,7 @@ def truncate_to_bytes(s, max_bytes):
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def make_config_name(params, base_stem, base_values, short_names=False, equal_sign="=", grid_indices=None):
+def make_config_name(params, base_stem, base_values, short_names=False, equal_sign="=", grid_indices=None, value_only_keys=None):
     parts = []
 
     for key, value in params.items():
@@ -248,7 +271,10 @@ def make_config_name(params, base_stem, base_values, short_names=False, equal_si
         else:
             base_value = base_values.get(key)
             val_str = value_to_string(value, base_value)
-        parts.append(f"{name}{equal_sign}{val_str}")
+        if value_only_keys and key in value_only_keys:
+            parts.append(val_str)
+        else:
+            parts.append(f"{name}{equal_sign}{val_str}")
 
     param_str = "__".join(parts)
     base_name = f"{base_stem}__{param_str}"
@@ -264,6 +290,59 @@ def make_config_name(params, base_stem, base_values, short_names=False, equal_si
 # -----------------------------
 # Expansion logic
 # -----------------------------
+
+
+def _build_grid_indices(grid_params):
+    result = {}
+    for name, vals in grid_params.items():
+        if not (vals and isinstance(vals[0], dict)):
+            continue
+        # Explicit __label takes priority
+        if any("__label" in v for v in vals):
+            result[name] = {id(v): sanitize_for_filename(str(v["__label"]))
+                            for v in vals if "__label" in v}
+            # fill any missing (shouldn't happen if user is consistent)
+            for i, v in enumerate(vals):
+                if id(v) not in result[name]:
+                    result[name][id(v)] = str(i)
+        else:
+            auto = _find_auto_label(vals)
+            result[name] = auto if auto is not None else {id(v): str(i) for i, v in enumerate(vals)}
+    return result
+
+
+def _compute_value_only_keys(grid_params, grid_indices, base_scalar_values, short_names):
+    """Return set of param names whose key prefix can be omitted in filenames.
+
+    Eligible when short_names=True and the dim uses human-readable string labels
+    (not bare numeric indices) that are unambiguous across all other eligible dims.
+    Covers both AoT dims (labels from grid_indices) and scalar string dims.
+    """
+    if not short_names:
+        return set()
+
+    # Collect candidate label-sets per dim
+    candidate_label_sets = {}
+    for name, vals in grid_params.items():
+        if name in grid_indices:
+            labels = set(grid_indices[name].values())
+            # Only treat as string-labeled if not purely numeric indices
+            if not all(s.isdigit() for s in labels):
+                candidate_label_sets[name] = labels
+        elif vals and all(isinstance(v, str) for v in vals):
+            base_val = base_scalar_values.get(name)
+            candidate_label_sets[name] = {value_to_string(v, base_val) for v in vals}
+
+    # A dim is value-only if its labels don't overlap with any other candidate's labels
+    value_only = set()
+    for name, label_set in candidate_label_sets.items():
+        other_values = set()
+        for other_name, other_set in candidate_label_sets.items():
+            if other_name != name:
+                other_values |= other_set
+        if not (label_set & other_values):
+            value_only.add(name)
+    return value_only
 
 
 def expand_configs(base_doc, grid_params, output_dir, base_stem, **kwargs):
@@ -282,11 +361,18 @@ def expand_configs(base_doc, grid_params, output_dir, base_stem, **kwargs):
         name: get_nested_value(base_doc, name) for name in grid_params
     }
 
-    grid_indices = {
-        name: {id(v): i for i, v in enumerate(vals)}
-        for name, vals in grid_params.items()
-        if vals and isinstance(vals[0], dict)
-    }
+    grid_indices = _build_grid_indices(grid_params)
+
+    short_names = kwargs.get("short_names", False)
+    value_only_keys = _compute_value_only_keys(
+        grid_params, grid_indices, base_scalar_values, short_names
+    )
+
+    # Strip __label from all AoT variants so it doesn't appear in output TOML
+    for vals in grid_params.values():
+        for v in vals:
+            if isinstance(v, dict) and "__label" in v:
+                del v["__label"]
 
     param_names = list(grid_params)
     param_values = [grid_params[n] for n in param_names]
@@ -299,7 +385,8 @@ def expand_configs(base_doc, grid_params, output_dir, base_stem, **kwargs):
             set_nested_value(variant, k, v)
 
         filename = make_config_name(
-            params, base_stem, base_scalar_values, grid_indices=grid_indices, **kwargs
+            params, base_stem, base_scalar_values,
+            grid_indices=grid_indices, value_only_keys=value_only_keys, **kwargs
         )
 
         (output_dir / filename).write_text(tomlkit.dumps(variant))
