@@ -24,6 +24,7 @@ dev = [
 [project.scripts]
 configpatch = "snakemakeconfigs.toml_patcher:configpatch_cli"
 expandgrids = "snakemakeconfigs.toml_patcher:expandgrids_cli"
+pathfill = "snakemakeconfigs.path_expander:pathfill_cli"
 
 [project.urls]
 homepage="https://github.com/MatteoLacki/snakemakeconfigs.git"
