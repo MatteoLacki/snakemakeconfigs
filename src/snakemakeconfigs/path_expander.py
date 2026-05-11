@@ -15,7 +15,9 @@ COLOR_BRACE = "\033[1;34m"
 
 
 def _load_module(module_path: Path):
-    spec = importlib.util.spec_from_file_location("snakemake_pipeline_paths", module_path)
+    spec = importlib.util.spec_from_file_location(
+        "snakemake_pipeline_paths", module_path
+    )
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not import module from {module_path}")
 
