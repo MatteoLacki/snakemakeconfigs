@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+History lives in `AI_CHANGELOG.md` (append-only; read it for *why* something changed).
+This file is present tense: a change rewrites its sentence here and appends an entry
+there, in the same commit.
+
 ## Project Overview
 
 **snakemakeconfigs** is a Python CLI tool for applying patches to TOML configuration files with grid search support. It generates multiple config variants from parameter combinations (Cartesian product).
